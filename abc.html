@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gas Molecule Simulation in a Box</title>
+    <style>
+        body {
+            margin: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            background-color: #f0f0f0;
+            font-family: Arial, sans-serif;
+        }
+        #container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        canvas {
+            border: 1px solid black;
+        }
+        #temperature {
+            margin-top: 10px;
+            font-size: 18px;
+            color: black;
+            background: white;
+            padding: 5px;
+            border: 1px solid black;
+            border-radius: 5px;
+        }
+        #info {
+            margin-left: 20px;
+            max-width: 300px;
+            text-align: left;
+        }
+        #info h2 {
+            margin: 0 0 10px 0;
+        }
+        #info p {
+            margin: 0 0 10px 0;
+        }
+        #info .equation {
+            font-family: 'Courier New', Courier, monospace;
+            border: 1px solid black;
+            padding: 5px;
+            background: #e0e0e0;
+        }
+    </style>
+</head>
+<body>
+    <div id="container">
+        <canvas id="canvas"></canvas>
+        <div id="temperature">Temperature: 0 K</div>
+    </div>
+    <div id="info">
+        <h2>Kinetic Theory of Gases</h2>
+        <p>
+            The kinetic theory of gases explains the behavior of gases in terms of the motion of their molecules. 
+            According to this theory, the temperature of a gas is proportional to the average kinetic energy of 
+            its molecules. The higher the temperature, the faster the molecules move.
+        </p>
+        <p class="equation">
+            T = (2 / 3) * (E_k / k_B)
+        </p>
+        <p>
+            where E_k is the average kinetic energy of a molecule, and k_B is the Boltzmann constant.
+        </p>
+    </div>
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        const WIDTH = canvas.width = window.innerWidth * 0.6;
+        const HEIGHT = canvas.height = window.innerHeight;
+
+        const NUM_MOLECULES = 50;
+        const MOLECULE_RADIUS = 5;
+        const TIME_STEP = 0.1;
+        const DAMPING = 0.99; // Energy loss due to collisions
+
+        // Constants for Van der Waals forces
+        const SIGMA = 10; // Distance where potential is zero
+        const EPSILON = 1; // Depth of the potential well
+
+        // Increased initial velocity range for more momentum
+        const INITIAL_VELOCITY_RANGE = 10; // Adjust this value to increase/decrease momentum
+
+        // Constants for temperature calculation
+        const BOLTZMANN_CONSTANT = 1.38e-23; // J/K
+        const MOLECULE_MASS = 6.64e-27; // kg
+
+        class Molecule {
+            constructor(x, y) {
+                this.x = x;
+                this.y = y;
+                this.vx = Math.random() * 2 * INITIAL_VELOCITY_RANGE - INITIAL_VELOCITY_RANGE;
+                this.vy = Math.random() * 2 * INITIAL_VELOCITY_RANGE - INITIAL_VELOCITY_RANGE;
+                this.radius = MOLECULE_RADIUS;
+                this.mass = MOLECULE_MASS; // Mass of helium molecule
+            }
+
+            update() {
+                this.x += this.vx * TIME_STEP;
+                this.y += this.vy * TIME_STEP;
+
+                // Boundary conditions (simple reflection)
+                if (this.x < this.radius || this.x > WIDTH - this.radius) {
+                    this.vx *= -1;
+                }
+                if (this.y < this.radius || this.y > HEIGHT - this.radius) {
+                    this.vy *= -1;
+                }
+            }
+
+            draw() {
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                ctx.fillStyle = 'blue';
+                ctx.fill();
+                ctx.closePath();
+            }
+        }
+
+        // Initialize molecules
+        const molecules = [];
+        for (let i = 0; i < NUM_MOLECULES; i++) {
+            molecules.push(new Molecule(
+                Math.random() * (WIDTH - 2 * MOLECULE_RADIUS) + MOLECULE_RADIUS,
+                Math.random() * (HEIGHT - 2 * MOLECULE_RADIUS) + MOLECULE_RADIUS
+            ));
+        }
+
+        function computeVanDerWaalsForce(m1, m2) {
+            const dx = m2.x - m1.x;
+            const dy = m2.y - m1.y;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+
+            if (distance < 2 * MOLECULE_RADIUS) { // Apply forces if molecules are close enough
+                const r = distance;
+                const forceMagnitude = 4 * EPSILON * ((SIGMA / r) ** 12 - (SIGMA / r) ** 6);
+                const force = {
+                    fx: forceMagnitude * (dx / r),
+                    fy: forceMagnitude * (dy / r),
+                };
+                return force;
+            }
+
+            return { fx: 0, fy: 0 };
+        }
+
+        function updateForces() {
+            // Reset forces
+            const forces = new Array(NUM_MOLECULES).fill(null).map(() => ({ fx: 0, fy: 0 }));
+
+            // Calculate forces between molecules
+            for (let i = 0; i < NUM_MOLECULES; i++) {
+                for (let j = i + 1; j < NUM_MOLECULES; j++) {
+                    const force = computeVanDerWaalsForce(molecules[i], molecules[j]);
+
+                    // Apply forces to both molecules
+                    forces[i].fx += force.fx;
+                    forces[i].fy += force.fy;
+                    forces[j].fx -= force.fx;
+                    forces[j].fy -= force.fy;
+                }
+            }
+
+            // Update velocities based on forces
+            for (let i = 0; i < NUM_MOLECULES; i++) {
+                molecules[i].vx += forces[i].fx * TIME_STEP;
+                molecules[i].vy += forces[i].fy * TIME_STEP;
+            }
+        }
+
+        function handleCollisions() {
+            for (let i = 0; i < NUM_MOLECULES; i++) {
+                for (let j = i + 1; j < NUM_MOLECULES; j++) {
+                    const dx = molecules[j].x - molecules[i].x;
+                    const dy = molecules[j].y - molecules[i].y;
+                    const distance = Math.sqrt(dx * dx + dy * dy);
+
+                    if (distance < 2 * MOLECULE_RADIUS) {
+                        // Basic elastic collision response
+                        const angle = Math.atan2(dy, dx);
+                        const speed1 = Math.sqrt(molecules[i].vx ** 2 + molecules[i].vy ** 2);
+                        const speed2 = Math.sqrt(molecules[j].vx ** 2 + molecules[j].vy ** 2);
+
+                        molecules[i].vx = speed2 * Math.cos(angle);
+                        molecules[i].vy = speed2 * Math.sin(angle);
+                        molecules[j].vx = speed1 * Math.cos(angle + Math.PI);
+                        molecules[j].vy = speed1 * Math.sin(angle + Math.PI);
+                    }
+                }
+            }
+        }
+
+        function computeTemperature() {
+            let totalKineticEnergy = 0;
+            for (let molecule of molecules) {
+                const speedSquared = molecule.vx ** 2 + molecule.vy ** 2;
+                const kineticEnergy = 0.5 * molecule.mass * speedSquared;
+                totalKineticEnergy += kineticEnergy;
+            }
+
+            const averageKineticEnergy = totalKineticEnergy / NUM_MOLECULES;
+            const temperature = (2 / 3) * (averageKineticEnergy / BOLTZMANN_CONSTANT);
+
+            return temperature;
+        }
+
+        function update() {
+            updateForces();
+            handleCollisions();
+
+            for (let molecule of molecules) {
+                molecule.update();
+                molecule.vx *= DAMPING; // Simulate energy loss
+                molecule.vy *= DAMPING;
+            }
+        }
+
+        function draw() {
+            ctx.clearRect(0, 0, WIDTH, HEIGHT);
+
+            // Draw the container boundaries
+            ctx.strokeStyle = 'black';
+            ctx.strokeRect(0, 0, WIDTH, HEIGHT);
+
+            // Draw molecules
+            for (let molecule of molecules) {
+                molecule.draw();
+            }
+
+            // Update temperature display
+            const temperature = computeTemperature();
+            document.getElementById('temperature').textContent = `Temperature: ${temperature.toFixed(2)} K`;
+        }
+
+        function loop() {
+            update();
+            draw();
+            requestAnimationFrame(loop);
+        }
+
+        loop();
+    </script>
+</body>
+</html>
